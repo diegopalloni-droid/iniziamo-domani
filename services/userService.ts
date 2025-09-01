@@ -1,7 +1,19 @@
 import { User } from '../types';
 import { db } from './firebase';
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    onSnapshot,
+    addDoc,
+    doc,
+    updateDoc,
+    deleteDoc,
+    FirestoreError,
+} from 'firebase/firestore';
 
-const usersCollection = db.collection('users');
+const usersCollection = collection(db, 'users');
 
 // IMPORTANT: Seed your database manually in the Firebase Console.
 // 1. Create a 'users' collection.
@@ -13,22 +25,22 @@ export const userService = {
     callback: (users: User[]) => void,
     onError: (error: Error) => void
   ): () => void {
-    const unsubscribe = usersCollection.onSnapshot(querySnapshot => {
+    const unsubscribe = onSnapshot(usersCollection, querySnapshot => {
         const users = querySnapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
         } as User));
         callback(users);
-    }, error => {
+    }, (error: FirestoreError) => {
         console.error("Error listening for user updates:", error);
-        onError(error);
+        onError(new Error(error.message));
     });
     return unsubscribe;
   },
 
   async getUserByUsername(username: string): Promise<User | null> {
-    const q = usersCollection.where('username', '==', username.toLowerCase());
-    const querySnapshot = await q.get();
+    const q = query(usersCollection, where('username', '==', username.toLowerCase()));
+    const querySnapshot = await getDocs(q);
     if (querySnapshot.empty) {
       return null;
     }
@@ -59,18 +71,18 @@ export const userService = {
       password: password,
     };
 
-    await usersCollection.add(newUser);
+    await addDoc(usersCollection, newUser);
     return { success: true };
   },
 
   async updateUser(userId: string, updates: Partial<User>): Promise<User | null> {
-    const userDocRef = db.collection('users').doc(userId);
-    await userDocRef.update(updates);
+    const userDocRef = doc(db, 'users', userId);
+    await updateDoc(userDocRef, updates);
     return null;
   },
 
   async deleteUser(userId: string): Promise<void> {
-    const userDocRef = db.collection('users').doc(userId);
-    await userDocRef.delete();
+    const userDocRef = doc(db, 'users', userId);
+    await deleteDoc(userDocRef);
   },
 };

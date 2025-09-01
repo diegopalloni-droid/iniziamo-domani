@@ -1,7 +1,21 @@
 import { SavedReport, User } from '../types';
 import { db } from './firebase';
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  addDoc,
+  doc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+  FirestoreError,
+} from 'firebase/firestore';
 
-const reportsCollection = db.collection('reports');
+
+const reportsCollection = collection(db, 'reports');
 
 // Helper to compare dates while ignoring time and timezone.
 const areDatesEqual = (date1: string, date2: string): boolean => {
@@ -18,21 +32,21 @@ export const reportService = {
     let q;
     if (isMasterUser) {
         // Query for all reports, ordered by date
-        q = reportsCollection.orderBy('date', 'desc');
+        q = query(reportsCollection, orderBy('date', 'desc'));
     } else {
         // Query for a specific user's reports, ordered by date
-        q = reportsCollection.where('userId', '==', user.id).orderBy('date', 'desc');
+        q = query(reportsCollection, where('userId', '==', user.id), orderBy('date', 'desc'));
     }
     
-    const unsubscribe = q.onSnapshot(querySnapshot => {
+    const unsubscribe = onSnapshot(q, querySnapshot => {
         const reports = querySnapshot.docs.map(doc => ({
             key: doc.id,
             ...(doc.data() as { date: string, text: string, userId: string }),
         } as SavedReport));
         callback(reports);
-    }, error => {
+    }, (error: FirestoreError) => {
         console.error("Error listening for report updates:", error);
-        onError(error);
+        onError(new Error(error.message));
     });
 
     return unsubscribe;
@@ -43,24 +57,24 @@ export const reportService = {
       ...report,
       userId,
     };
-    const docRef = await reportsCollection.add(dataToSave);
+    const docRef = await addDoc(reportsCollection, dataToSave);
     return { key: docRef.id, ...dataToSave };
   },
   
   async updateReport(reportKey: string, report: { date: string, text: string, userId: string }): Promise<SavedReport> {
-    const reportDocRef = db.collection('reports').doc(reportKey);
-    await reportDocRef.update(report);
+    const reportDocRef = doc(db, 'reports', reportKey);
+    await updateDoc(reportDocRef, report);
     return { key: reportKey, ...report };
   },
 
   async deleteReport(reportKey: string): Promise<void> {
-    const reportDocRef = db.collection('reports').doc(reportKey);
-    await reportDocRef.delete();
+    const reportDocRef = doc(db, 'reports', reportKey);
+    await deleteDoc(reportDocRef);
   },
   
   async checkDateConflict(userId: string, dateToCheck: string, currentReportKey: string | null): Promise<SavedReport | null> {
-    const q = reportsCollection.where('userId', '==', userId);
-    const querySnapshot = await q.get();
+    const q = query(reportsCollection, where('userId', '==', userId));
+    const querySnapshot = await getDocs(q);
     
     for (const doc of querySnapshot.docs) {
         // Ensure we are not checking the report against itself

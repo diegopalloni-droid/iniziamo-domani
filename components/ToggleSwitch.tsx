@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 
 interface ToggleSwitchProps {
   checked: boolean;
@@ -6,12 +6,13 @@ interface ToggleSwitchProps {
 }
 
 export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange }) => {
+  const id = useId();
   return (
-    <label htmlFor={`toggle-${Math.random()}`} className="flex items-center cursor-pointer">
+    <label htmlFor={id} className="flex items-center cursor-pointer">
       <div className="relative">
         <input
           type="checkbox"
-          id={`toggle-${Math.random()}`}
+          id={id}
           className="sr-only"
           checked={checked}
           onChange={onChange}
