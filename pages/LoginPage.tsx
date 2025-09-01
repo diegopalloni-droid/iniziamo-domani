@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Logo } from '../components/Logo';
+import { GoogleIcon } from '../components/GoogleIcon';
 
 const LoginPage: React.FC = () => {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -15,23 +17,22 @@ const LoginPage: React.FC = () => {
         setLoginError('Nome utente e password sono obbligatori.');
         return;
     }
+    setIsLoggingIn(true);
     const result = await login(username, password); 
     if (!result.success) {
-      switch (result.reason) {
-        case 'unauthorized':
-          setLoginError('Utente non trovato o non autorizzato.');
-          break;
-        case 'disabled':
-          setLoginError('Il tuo account è stato disabilitato.');
-          break;
-        case 'invalid_credentials':
-          setLoginError('Credenziali non valide.');
-          break;
-        default:
-          setLoginError('Si è verificato un errore durante il login.');
-          break;
-      }
+      setLoginError(result.reason || 'Si è verificato un errore durante il login.');
     }
+    setIsLoggingIn(false);
+  };
+  
+  const handleGoogleLogin = async () => {
+    setLoginError('');
+    setIsLoggingIn(true);
+    const result = await loginWithGoogle();
+    if (!result.success) {
+      setLoginError(result.reason || 'Si è verificato un errore durante il login con Google.');
+    }
+    setIsLoggingIn(false);
   };
 
   return (
@@ -70,14 +71,32 @@ const LoginPage: React.FC = () => {
                     aria-label="Password"
                 />
             </div>
-            {loginError && <p className="text-red-500 text-sm text-center">{loginError}</p>}
+            
             <button
                 type="submit"
-                className="w-full py-2.5 px-4 bg-blue-900 text-white font-medium rounded-md shadow-sm hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="w-full py-2.5 px-4 bg-blue-900 text-white font-medium rounded-md shadow-sm hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400"
+                disabled={isLoggingIn}
             >
-                Accedi
+                {isLoggingIn ? 'Accesso in corso...' : 'Accedi'}
             </button>
         </form>
+        
+        <div className="relative flex py-2 items-center">
+            <div className="flex-grow border-t border-gray-300"></div>
+            <span className="flex-shrink mx-4 text-gray-400 text-sm">o</span>
+            <div className="flex-grow border-t border-gray-300"></div>
+        </div>
+
+        <button
+            onClick={handleGoogleLogin}
+            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 bg-white border border-gray-300 text-gray-700 font-medium rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-200"
+            disabled={isLoggingIn}
+        >
+            <GoogleIcon />
+            Accedi con Google
+        </button>
+
+        {loginError && <p className="text-red-500 text-sm text-center pt-2">{loginError}</p>}
       </div>
       <footer className="mt-8">
           <p className="text-xs text-gray-400">

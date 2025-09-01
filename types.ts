@@ -1,16 +1,15 @@
-
-
 export interface SavedReport {
-  key: string;
+  id: string;
   date: string;
   text: string;
   userId: string;
 }
 
 export interface User {
-  id: string;
+  id: string; // This will be the Firebase Auth UID
   username: string;
+  email: string;
   name: string;
   isActive: boolean;
-  password?: string;
+  isMaster?: boolean;
 }

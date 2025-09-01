@@ -1,57 +1,119 @@
-
-
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
 import { User } from '../types';
+import { auth, googleProvider } from '../services/firebase';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User as FirebaseUser, signInWithPopup } from 'firebase/auth';
 import { userService } from '../services/userService';
-
-const MASTER_USER_USERNAME = 'master';
 
 interface AuthContextType {
   user: User | null;
   isLoggedIn: boolean;
   isMasterUser: boolean;
-  login: (username: string, password?: string) => Promise<{ success: boolean; reason?: 'unauthorized' | 'disabled' | 'invalid_credentials' }>;
-  logout: () => void;
+  isAuthLoading: boolean;
+  login: (username: string, password?: string) => Promise<{ success: boolean; reason?: string }>;
+  loginWithGoogle: () => Promise<{ success: boolean; reason?: string }>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  const login = async (username: string, password?: string): Promise<{ success: boolean; reason?: 'unauthorized' | 'disabled' | 'invalid_credentials' }> => {
-    const authorizedUser = await userService.getUserByUsername(username);
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      if (firebaseUser) {
+        // User is signed in, get our custom user data from Firestore
+        const userProfile = await userService.getUserById(firebaseUser.uid);
+        if (userProfile && userProfile.isActive) {
+          setUser(userProfile);
+        } else {
+          // User document not found or user is inactive, sign them out.
+          await signOut(auth);
+          setUser(null);
+        }
+      } else {
+        // User is signed out
+        setUser(null);
+      }
+      setIsAuthLoading(false);
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, []);
+
+  const login = async (username: string, password?: string): Promise<{ success: boolean; reason?: string }> => {
+    if (!password) {
+        return { success: false, reason: 'Password mancante.'}
+    }
     
-    if (!authorizedUser) {
-      return { success: false, reason: 'unauthorized' };
-    }
+    try {
+        // Find user by username to get their email
+        const userToLogin = await userService.findUserByUsername(username);
 
-    // All users, including master, need to provide a valid password.
-    if (!authorizedUser.password || authorizedUser.password !== password) {
-        return { success: false, reason: 'invalid_credentials' };
+        if (!userToLogin) {
+            return { success: false, reason: 'Nome utente o password non corretti.' };
+        }
+        if (!userToLogin.isActive) {
+            return { success: false, reason: 'Questo account è stato disabilitato.' };
+        }
+        
+        await signInWithEmailAndPassword(auth, userToLogin.email, password);
+        // onAuthStateChanged will handle setting the user state
+        return { success: true };
+    } catch (error: any) {
+        let reason = 'Credenziali non valide.';
+        if (error.code === 'auth/wrong-password') {
+            reason = 'Nome utente o password non corretti.';
+        }
+        console.error("Login failed:", error.message || error);
+        return { success: false, reason };
     }
-
-    if (!authorizedUser.isActive) {
-        return { success: false, reason: 'disabled' };
+  };
+  
+  const loginWithGoogle = async (): Promise<{ success: boolean; reason?: string }> => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const googleUser = result.user;
+      
+      if (!googleUser.email) {
+        await signOut(auth);
+        return { success: false, reason: 'Impossibile ottenere l\'email dal tuo account Google.' };
+      }
+      
+      const isAuthorized = await userService.isGoogleEmailAuthorized(googleUser.email);
+      
+      if (!isAuthorized) {
+        await signOut(auth);
+        return { success: false, reason: 'Il tuo account Google non è autorizzato ad accedere.' };
+      }
+      
+      // Email is authorized, ensure user profile exists in our 'users' collection
+      await userService.findOrCreateUserForGoogleSignIn(googleUser);
+      // onAuthStateChanged will handle setting the user state
+      return { success: true };
+      
+    } catch (error: any) {
+      let reason = 'Accesso con Google non riuscito.';
+      if (error.code === 'auth/popup-closed-by-user') {
+        reason = 'La finestra di accesso è stata chiusa.';
+      }
+      console.error("Google login failed:", error.message || error);
+      return { success: false, reason };
     }
-
-    if (!authorizedUser.name) {
-      authorizedUser.name = authorizedUser.username;
-    }
-    
-    setUser(authorizedUser);
-    return { success: true };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await signOut(auth);
     setUser(null);
   };
   
   const isLoggedIn = !!user;
-  const isMasterUser = user?.username === MASTER_USER_USERNAME;
+  const isMasterUser = !!user?.isMaster;
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn, isMasterUser, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoggedIn, isMasterUser, isAuthLoading, login, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -11,12 +11,11 @@ import { Header } from './components/Header';
 export type Page = 'landing' | 'creator' | 'saved' | 'userManagement';
 
 const AppContent: React.FC = () => {
-  const { isLoggedIn, isMasterUser } = useAuth();
+  const { isLoggedIn, isMasterUser, isAuthLoading } = useAuth();
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [reportToEdit, setReportToEdit] = useState<SavedReport | null>(null);
 
   useEffect(() => {
-    // When the user logs out, reset the application state to the landing page.
     if (!isLoggedIn) {
       setCurrentPage('landing');
       setReportToEdit(null);
@@ -37,6 +36,14 @@ const AppContent: React.FC = () => {
     setCurrentPage('creator');
   };
   
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-500">Caricamento in corso...</p>
+      </div>
+    )
+  }
+  
   if (!isLoggedIn) {
       return (
          <div className="min-h-screen flex items-center justify-center p-4">
@@ -48,7 +55,7 @@ const AppContent: React.FC = () => {
   const renderPage = () => {
     switch (currentPage) {
       case 'creator':
-        return <ReportCreator navigateTo={navigateTo} initialReport={reportToEdit} onEditReport={handleEditReport} />;
+        return <ReportCreator navigateTo={navigateTo} initialReport={reportToEdit} />;
       case 'saved':
         return <SavedReports navigateTo={navigateTo} onEditReport={handleEditReport} />;
       case 'userManagement':

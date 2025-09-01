@@ -7,12 +7,10 @@ import { SavedReport } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { reportService } from '../services/reportService';
 import { ArrowLeftIcon } from '../components/ArrowLeftIcon';
-import { DownloadIcon } from '../components/DownloadIcon';
 
 interface ReportCreatorProps {
   navigateTo: (page: Page) => void;
   initialReport: SavedReport | null;
-  onEditReport: (report: SavedReport) => void;
 }
 
 const formatDateForDisplay = (date: Date): string => {
@@ -43,29 +41,31 @@ const formatTextForDoc = (text: string): string => {
     }).join('');
 };
 
-const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport, onEditReport }) => {
+const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport }) => {
   
   const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [templateText, setTemplateText] = useState<string>(getDefaultText(new Date()));
   const [visitCount, setVisitCount] = useState<number>(0);
   const [saveButtonText, setSaveButtonText] = useState<string>('Salva');
-  const [editingReportKey, setEditingReportKey] = useState<string | null>(null);
-  const [dateConflict, setDateConflict] = useState<SavedReport | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editingReportId, setEditingReportId] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialReport) {
       const date = new Date(initialReport.date);
-      setSelectedDate(date);
+      // Adjust for timezone offset when creating Date from ISO string
+      const userTimezoneOffset = date.getTimezoneOffset() * 60000;
+      const correctedDate = new Date(date.getTime() + userTimezoneOffset);
+
+      setSelectedDate(correctedDate);
       setTemplateText(initialReport.text);
-      setEditingReportKey(initialReport.key);
+      setEditingReportId(initialReport.id);
     } else {
-        const today = new Date();
-        setSelectedDate(today);
-        setTemplateText(getDefaultText(today));
-        setEditingReportKey(null);
+      const today = new Date();
+      setSelectedDate(today);
+      setTemplateText(getDefaultText(today));
+      setEditingReportId(null);
     }
   }, [initialReport]);
 
@@ -97,59 +97,44 @@ const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } catch (error) {
-        console.error("Failed to download file:", error);
+    } catch (error: any) {
+        console.error("Failed to download file:", error.message || error);
         alert("Errore durante il download del report.");
     }
   };
 
   const handleSaveToCloud = async () => {
     if (!user) {
-      setSaveButtonText('Errore');
-      console.error("User not logged in");
-      setTimeout(() => setSaveButtonText('Salva'), 2000);
+      alert("Utente non loggato. Impossibile salvare.");
       return;
     }
     
-    setSaveError(null);
-    setDateConflict(null);
-    setIsChecking(true);
-    setSaveButtonText('Verifico...');
-
-    const conflictingReport = await reportService.checkDateConflict(user.id, selectedDate.toISOString(), editingReportKey);
-
-    if (conflictingReport) {
-      setDateConflict(conflictingReport);
-      setIsChecking(false);
-      setSaveButtonText('Salva');
-      return;
-    }
-
+    setIsSaving(true);
+    setSaveButtonText('Salvo...');
+    
+    const reportData = {
+      date: selectedDate.toISOString().split('T')[0], // Save as YYYY-MM-DD
+      text: templateText,
+      userId: user.id,
+    };
+    
     let result: { success: boolean; message?: string };
-    if (editingReportKey) {
-      result = await reportService.updateReport(editingReportKey, {
-        date: selectedDate.toISOString(),
-        text: templateText,
-        userId: user.id,
-      });
+    if (editingReportId) {
+      result = await reportService.updateReport(editingReportId, reportData);
     } else {
-      result = await reportService.saveReport(user.id, {
-        date: selectedDate.toISOString(),
-        text: templateText,
-      });
+      result = await reportService.saveReport(reportData);
     }
 
-    setIsChecking(false);
+    setIsSaving(false);
 
     if (result.success) {
       setSaveButtonText('Salvato!');
       setTimeout(() => {
-        setSaveButtonText('Salva');
         navigateTo('saved');
-      }, 1500);
+      }, 1000);
     } else {
       setSaveButtonText('Salva');
-      setSaveError(result.message || "Non è stato possibile salvare il report. Controlla la tua connessione e riprova.");
+      alert(result.message || "Non è stato possibile salvare il report.");
     }
   };
 
@@ -171,77 +156,8 @@ const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport
     });
   };
   
-  const handleEditConflict = () => {
-    if (dateConflict) {
-      onEditReport(dateConflict);
-      setDateConflict(null);
-    }
-  };
-  
-  const handleRetrySave = () => {
-    setSaveError(null);
-    handleSaveToCloud();
-  };
-
-  const handleDownloadAndCloseModal = () => {
-    handleDownloadLocally();
-    setSaveError(null);
-  };
-
   return (
     <div className="w-full max-w-3xl mx-auto bg-white rounded-lg shadow-md overflow-hidden border border-gray-200 relative">
-      {saveError && (
-         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20 p-4">
-            <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full text-center">
-                <h2 className="text-xl font-bold text-gray-800">Errore di Salvataggio</h2>
-                <p className="text-gray-600 mt-2">{saveError}</p>
-                <div className="mt-6 flex flex-col gap-3">
-                    <button
-                        onClick={handleRetrySave}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-900 text-white font-semibold rounded-md shadow-sm hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75"
-                    >
-                        <SaveIcon />
-                        Riprova a Salvare
-                    </button>
-                    <button
-                        onClick={handleDownloadAndCloseModal}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white font-semibold rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                    >
-                        <DownloadIcon />
-                        Scarica Copia Locale
-                    </button>
-                     <button
-                        onClick={() => setSaveError(null)}
-                        className="text-sm text-gray-500 hover:underline mt-2"
-                    >
-                        Annulla
-                    </button>
-                </div>
-            </div>
-         </div>
-      )}
-      {dateConflict && (
-         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10 p-4">
-            <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full text-center">
-                <h2 className="text-xl font-bold text-gray-800">Conflitto di Date</h2>
-                <p className="text-gray-600 mt-2">Esiste già un report per la data selezionata. Cosa vorresti fare?</p>
-                <div className="mt-6 flex flex-col gap-3">
-                    <button
-                        onClick={handleEditConflict}
-                        className="w-full px-4 py-2 bg-blue-900 text-white font-semibold rounded-md shadow-sm hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75"
-                    >
-                        Modifica Report Esistente
-                    </button>
-                    <button
-                        onClick={() => setDateConflict(null)}
-                        className="w-full px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                    >
-                        Cambia Data
-                    </button>
-                </div>
-            </div>
-         </div>
-      )}
       <div className="p-8 space-y-6">
         <header>
           <div className="relative flex items-center justify-center">
@@ -253,10 +169,10 @@ const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport
               <ArrowLeftIcon />
               <span className="hidden sm:inline">Indietro</span>
             </button>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-800">{editingReportKey ? 'Modifica Report' : 'Crea Report'}</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-800">{editingReportId ? 'Modifica Report' : 'Crea Report'}</h1>
           </div>
           <p className="mt-2 text-center text-gray-500">
-            Compila e scarica il tuo report giornaliero.
+            Compila e salva il tuo report giornaliero.
           </p>
         </header>
 
@@ -285,19 +201,26 @@ const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport
             </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button
                 onClick={handleAddVisit}
                 className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-md shadow-sm transition-colors"
-                disabled={isChecking}
+                disabled={isSaving}
             >
                 <PlusIcon />
                 Aggiungi Visita
             </button>
+             <button
+                onClick={handleDownloadLocally}
+                className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-md shadow-sm transition-colors"
+                disabled={isSaving}
+            >
+                Scarica
+            </button>
             <button
                 onClick={handleSaveToCloud}
                 className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-900 hover:bg-blue-800 text-white font-bold rounded-md shadow-sm transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed"
-                disabled={isChecking}
+                disabled={isSaving}
             >
                 <SaveIcon />
                 {saveButtonText}
