@@ -161,15 +161,15 @@ const SavedReports: React.FC<SavedReportsProps> = ({ navigateTo, onEditReport })
 
   const confirmDelete = async () => {
     if (!reportToDelete) return;
-    try {
-      await reportService.deleteReport(reportToDelete.key);
-      // No need to manually update state, the listener will do it.
-    } catch (error) {
-      console.error("Failed to delete report:", error);
-      alert("Errore durante l'eliminazione del report.");
-    } finally {
-      setReportToDelete(null); // Close modal
+
+    const result = await reportService.deleteReport(reportToDelete.key);
+    
+    setReportToDelete(null); // Close modal
+    
+    if (!result.success) {
+      alert(result.message || "Errore durante l'eliminazione del report.");
     }
+    // The real-time listener will automatically update the UI on success.
   };
   
   const cancelDelete = () => {

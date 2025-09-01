@@ -62,14 +62,20 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ navigateTo }) =
   };
   
   const handleToggleUserStatus = async (user: User) => {
-    await userService.updateUser(user.id, { isActive: !user.isActive });
-    // No need to call fetchUsers()
+    const result = await userService.updateUser(user.id, { isActive: !user.isActive });
+    if (!result.success) {
+      alert(result.message || "Impossibile aggiornare lo stato dell'utente.");
+    }
+    // The real-time listener will automatically update the UI.
   };
 
   const handleDeleteUser = async (userId: string) => {
     if (window.confirm("Sei sicuro di voler eliminare questo utente? L'azione è permanente.")) {
-        await userService.deleteUser(userId);
-        // No need to call fetchUsers()
+        const result = await userService.deleteUser(userId);
+        if (!result.success) {
+          alert(result.message || "Impossibile eliminare l'utente.");
+        }
+        // The real-time listener will automatically update the UI.
     }
   };
 
@@ -91,8 +97,12 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ navigateTo }) =
           alert('La password deve essere di almeno 6 caratteri.');
           return;
       }
-      await userService.updateUser(editingUser.id, { password: newPassword });
-      handleClosePasswordModal();
+      const result = await userService.updateUser(editingUser.id, { password: newPassword });
+      if (result.success) {
+        handleClosePasswordModal();
+      } else {
+        alert(result.message || "Impossibile cambiare la password.");
+      }
     }
   };
   

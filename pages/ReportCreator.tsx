@@ -125,32 +125,31 @@ const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport
       return;
     }
 
-    try {
-      if (editingReportKey) {
-        // Update existing report
-        await reportService.updateReport(editingReportKey, {
-          date: selectedDate.toISOString(),
-          text: templateText,
-          userId: user.id,
-        });
-      } else {
-        // Create new report
-        await reportService.saveReport(user.id, {
-          date: selectedDate.toISOString(),
-          text: templateText,
-        });
-      }
+    let result: { success: boolean; message?: string };
+    if (editingReportKey) {
+      result = await reportService.updateReport(editingReportKey, {
+        date: selectedDate.toISOString(),
+        text: templateText,
+        userId: user.id,
+      });
+    } else {
+      result = await reportService.saveReport(user.id, {
+        date: selectedDate.toISOString(),
+        text: templateText,
+      });
+    }
+
+    setIsChecking(false);
+
+    if (result.success) {
       setSaveButtonText('Salvato!');
       setTimeout(() => {
         setSaveButtonText('Salva');
         navigateTo('saved');
       }, 1500);
-    } catch (error) {
-      console.error("Failed to save to cloud:", error);
+    } else {
       setSaveButtonText('Salva');
-      setSaveError("Non è stato possibile salvare il report sul cloud. Controlla la tua connessione e riprova.");
-    } finally {
-        setIsChecking(false);
+      setSaveError(result.message || "Non è stato possibile salvare il report. Controlla la tua connessione e riprova.");
     }
   };
 

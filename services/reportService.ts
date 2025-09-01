@@ -52,40 +52,66 @@ export const reportService = {
     return unsubscribe;
   },
 
-  async saveReport(userId: string, report: { date: string, text: string }): Promise<SavedReport> {
-    const dataToSave = {
-      ...report,
-      userId,
-    };
-    const docRef = await addDoc(reportsCollection, dataToSave);
-    return { key: docRef.id, ...dataToSave };
+  async saveReport(userId: string, report: { date: string, text: string }): Promise<{ success: boolean; message?: string }> {
+    try {
+      const dataToSave = {
+        ...report,
+        userId,
+      };
+      await addDoc(reportsCollection, dataToSave);
+      return { success: true };
+    } catch (error) {
+        console.error("Error saving report:", error);
+        const message = error instanceof Error ? error.message : "An unknown error occurred while saving.";
+        return { success: false, message };
+    }
   },
   
-  async updateReport(reportKey: string, report: { date: string, text: string, userId: string }): Promise<SavedReport> {
-    const reportDocRef = doc(db, 'reports', reportKey);
-    await updateDoc(reportDocRef, report);
-    return { key: reportKey, ...report };
+  async updateReport(reportKey: string, report: { date: string, text: string, userId: string }): Promise<{ success: boolean; message?: string }> {
+    try {
+      const reportDocRef = doc(db, 'reports', reportKey);
+      await updateDoc(reportDocRef, report);
+      return { success: true };
+    } catch (error) {
+        console.error("Error updating report:", error);
+        const message = error instanceof Error ? error.message : "An unknown error occurred while updating.";
+        return { success: false, message };
+    }
   },
 
-  async deleteReport(reportKey: string): Promise<void> {
-    const reportDocRef = doc(db, 'reports', reportKey);
-    await deleteDoc(reportDocRef);
+  async deleteReport(reportKey: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const reportDocRef = doc(db, 'reports', reportKey);
+      await deleteDoc(reportDocRef);
+      return { success: true };
+    } catch (error) {
+      console.error("Error deleting report:", error);
+      const message = error instanceof Error ? error.message : "An unknown error occurred while deleting.";
+      return { success: false, message };
+    }
   },
   
   async checkDateConflict(userId: string, dateToCheck: string, currentReportKey: string | null): Promise<SavedReport | null> {
-    const q = query(reportsCollection, where('userId', '==', userId));
-    const querySnapshot = await getDocs(q);
-    
-    for (const doc of querySnapshot.docs) {
-        // Ensure we are not checking the report against itself
-        if (doc.id !== currentReportKey) {
-            const reportData = doc.data() as { date: string, text: string, userId: string };
-            if (areDatesEqual(reportData.date, dateToCheck)) {
-                return { key: doc.id, ...reportData }; // Conflict found
-            }
-        }
+    try {
+      const q = query(reportsCollection, where('userId', '==', userId));
+      const querySnapshot = await getDocs(q);
+      
+      for (const doc of querySnapshot.docs) {
+          // Ensure we are not checking the report against itself
+          if (doc.id !== currentReportKey) {
+              const reportData = doc.data() as { date: string, text: string, userId: string };
+              if (areDatesEqual(reportData.date, dateToCheck)) {
+                  return { key: doc.id, ...reportData }; // Conflict found
+              }
+          }
+      }
+      
+      return null; // No conflict
+    } catch (error) {
+        console.error("Error checking for date conflict:", error);
+        // Returning null prevents a crash. The subsequent save/update operation will likely fail,
+        // but that failure will be handled gracefully by the updated service methods.
+        return null;
     }
-    
-    return null; // No conflict
   },
 };
